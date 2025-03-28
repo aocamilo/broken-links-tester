@@ -6,7 +6,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 
-import "../styles/app.css";
+import appCss from "@/styles/app.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -45,6 +45,12 @@ export const Route = createRootRoute({
         rel: "icon",
         href: "/favicon.svg",
         sizes: "any",
+      },
+    ],
+    links: [
+      {
+        rel: "stylesheet",
+        href: appCss,
       },
     ],
   }),
