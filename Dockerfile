@@ -18,12 +18,47 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o broken-links-tester ./cmd/server
 FROM node:18-alpine
 RUN apk --no-cache add ca-certificates supervisor
 
-# Install additional packages
-RUN apk add --no-cache chromium firefox libc6-compat nss
+# Install Playwright dependencies for Alpine
+RUN apk add --no-cache \
+  chromium \
+  firefox-esr \
+  nss \
+  freetype \
+  freetype-dev \
+  harfbuzz \
+  ca-certificates \
+  ttf-freefont \
+  nodejs \
+  yarn \
+  ffmpeg \
+  font-noto \
+  font-noto-emoji \
+  font-noto-extra \
+  font-noto-cjk \
+  font-noto-arabic \
+  font-noto-armenian \
+  font-noto-bengali \
+  font-noto-devanagari \
+  font-noto-ethiopic \
+  font-noto-georgian \
+  font-noto-gujarati \
+  font-noto-gurmukhi \
+  font-noto-hebrew \
+  font-noto-khmer \
+  font-noto-lao \
+  font-noto-malayalam \
+  font-noto-myanmar \
+  font-noto-nko \
+  font-noto-sinhala \
+  font-noto-tamil \
+  font-noto-telugu \
+  font-noto-thai \
+  font-noto-tibetan \
+  font-noto-oriya
 
-# Create a symbolic link to node in the expected location
-RUN mkdir -p /root/.cache/ms-playwright-go/1.50.1
-RUN ln -s $(which node) /root/.cache/ms-playwright-go/1.50.1/node
+# Install Playwright browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install chromium firefox
 
 # Copy the application binary and assets
 WORKDIR /app
