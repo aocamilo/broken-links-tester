@@ -1,34 +1,25 @@
 #!/bin/sh
 
-# Debug info
-echo "Starting Go server from $(pwd)"
-echo "Listing directory contents:"
-ls -la
+# Echo current directory and list files for debugging
+echo "Starting Go server with the following configuration:"
+echo "Current directory: $(pwd)"
 
-# Check if the binary exists and is executable
-if [ ! -f "/app/broken-links-tester" ]; then
-  echo "ERROR: Go binary not found at /app/broken-links-tester"
-  exit 1
+# Check if UI directories exist
+echo "Checking UI directories:"
+if [ -d "./ui/dist" ]; then
+  echo "UI directory ./ui/dist exists"
+  ls -la ./ui/dist
+else
+  echo "UI directory ./ui/dist does not exist"
 fi
 
-if [ ! -x "/app/broken-links-tester" ]; then
-  echo "Making Go binary executable"
-  chmod +x /app/broken-links-tester
+if [ -d "./ui/.output/public" ]; then
+  echo "UI directory ./ui/.output/public exists"
+  ls -la ./ui/.output/public
+else
+  echo "UI directory ./ui/.output/public does not exist"
 fi
 
-# Check if UI dist directory exists
-if [ ! -d "/app/ui/dist" ]; then
-  echo "ERROR: UI dist directory not found at /app/ui/dist"
-  echo "Creating directory"
-  mkdir -p /app/ui/dist
-fi
-
-# Create a blank index.html if it doesn't exist
-if [ ! -f "/app/ui/dist/index.html" ]; then
-  echo "Creating dummy index.html"
-  echo "<html><body><h1>UI Server is running at port 3000</h1></body></html>" > /app/ui/dist/index.html
-fi
-
-# Execute the Go server with output
-echo "Executing Go server binary"
+# Start the Go server
+echo "Starting Go server..."
 exec /app/broken-links-tester 

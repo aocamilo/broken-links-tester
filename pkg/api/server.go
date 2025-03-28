@@ -1,7 +1,8 @@
 package api
 
 import (
-	"fmt"
+	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,8 +10,9 @@ import (
 
 	"github.com/aocamilo/broken-links-tester/internal/models"
 	"github.com/aocamilo/broken-links-tester/pkg/crawler"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
+	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
@@ -33,27 +35,13 @@ func NewServer() (*Server, error) {
 	}
 
 	r := gin.Default()
-	
-	// Enable CORS
-	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-		
-		c.Next()
-	})
+	r.Use(cors.Default())
 
 	s := &Server{
 		router:  r,
 		crawler: c,
 	}
 
-	s.registerRoutes()
 	return s, nil
 }
 
@@ -62,95 +50,164 @@ func (s *Server) Close() error {
 	return s.crawler.Close()
 }
 
-func (s *Server) registerRoutes() {
-	// Print server startup information for debugging
-	fmt.Println("Starting server with the following configuration:")
-	fmt.Printf("Working directory: %s\n", func() string {
-		dir, err := os.Getwd()
-		if err != nil {
-			return "unknown (error getting working directory)"
-		}
-		return dir
-	}())
-	
+// Start starts the server
+func (s *Server) Run(port string) error {
+	defer s.Close()
+	s.setupRoutes()
+	return s.router.Run(":" + port)
+}
+
+func (s *Server) setupRoutes() {
+	// Log current working directory and check if UI directory exists
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Printf("Failed to get current working directory: %v", err)
+	} else {
+		log.Printf("Current working directory: %s", cwd)
+	}
+
 	// Check if UI directory exists
 	uiDir := "./ui/dist"
-	if _, err := os.Stat(uiDir); err != nil {
-		fmt.Printf("WARNING: UI directory not found at %s: %v\n", uiDir, err)
-	} else {
-		fmt.Printf("UI directory found at %s\n", uiDir)
-		// List files in UI directory
-		if files, err := os.ReadDir(uiDir); err != nil {
-			fmt.Printf("Error reading UI directory: %v\n", err)
+	if _, err := os.Stat(uiDir); os.IsNotExist(err) {
+		log.Printf("UI directory %s not found, trying alternative path", uiDir)
+		// Try alternative path
+		uiDir = "./ui/.output/public"
+		if _, err := os.Stat(uiDir); os.IsNotExist(err) {
+			log.Printf("Alternative UI directory %s not found", uiDir)
 		} else {
-			fmt.Printf("UI directory contains %d files/directories\n", len(files))
-			for i, file := range files {
-				if i < 10 { // Only print first 10 files to avoid excessive output
-					fmt.Printf("  - %s (is dir: %t)\n", file.Name(), file.IsDir())
+			log.Printf("Found alternative UI directory at %s", uiDir)
+		}
+	} else {
+		log.Printf("Found UI directory at %s", uiDir)
+	}
+
+	// List files in UI directory for debugging
+	listDirectoryFiles(uiDir, 0, 5) // List up to 5 files for debugging
+
+	// API group
+	api := s.router.Group("/api")
+	{
+		// Health check endpoint
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status": "healthy",
+			})
+		})
+
+		// Check links endpoint
+		api.POST("/check-links", s.checkLinks)
+
+		// Swagger docs
+		api.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
+	}
+
+	// Serve static files from the UI build directory
+	s.router.Static("/assets", filepath.Join(uiDir, "assets"))
+	
+	// List subdirectories in UI dir and serve them as static paths
+	if uiDirExists, _ := pathExists(uiDir); uiDirExists {
+		entries, err := os.ReadDir(uiDir)
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() && entry.Name() != "assets" {
+					dirPath := filepath.Join(uiDir, entry.Name())
+					s.router.Static("/"+entry.Name(), dirPath)
+					log.Printf("Serving directory: /%s from %s", entry.Name(), dirPath)
 				}
-			}
-			if len(files) > 10 {
-				fmt.Printf("  ... and %d more\n", len(files)-10)
 			}
 		}
 	}
-	
-	// Create an API group with the /api prefix
-	api := s.router.Group("/api")
-	
-	// Health check for Railway
-	api.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+
+	// Fallback to index.html for any non-API routes
+	s.router.NoRoute(func(c *gin.Context) {
+		// Skip API routes
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Next()
+			return
+		}
+
+		// Try to serve index.html
+		indexPath := filepath.Join(uiDir, "index.html")
+		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+			// If not found in main dir, search in subdirectories
+			found := false
+			if uiDirExists, _ := pathExists(uiDir); uiDirExists {
+				err := filepath.WalkDir(uiDir, func(path string, d fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if !d.IsDir() && d.Name() == "index.html" {
+						indexPath = path
+						found = true
+						return filepath.SkipDir // Stop walking once found
+					}
+					return nil
+				})
+				if err != nil {
+					log.Printf("Error searching for index.html: %v", err)
+				}
+			}
+			
+			if !found {
+				log.Printf("index.html not found in UI directory or subdirectories")
+				c.String(http.StatusNotFound, "UI not found")
+				return
+			}
+		}
+
+		log.Printf("Serving index.html from %s", indexPath)
+		c.File(indexPath)
 	})
-	
-	// Swagger documentation - under /api/docs
-	api.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	
-	// API routes
-	api.POST("/check-links", s.checkLinks)
-	
-	// Serve static files from the UI build directory if it exists
-	if _, err := os.Stat(uiDir); err == nil {
-		// Handle static assets
-		s.router.Static("/assets", filepath.Join(uiDir, "assets"))
-		
-		// Serve index.html for any other route
-		s.router.NoRoute(func(c *gin.Context) {
-			// Don't serve UI for API routes that don't exist
-			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-				c.JSON(http.StatusNotFound, gin.H{"error": "API endpoint not found"})
-				return
+}
+
+// pathExists checks if a path exists
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// listDirectoryFiles lists files in a directory recursively with a limit
+func listDirectoryFiles(dirPath string, depth, maxFiles int) {
+	if depth > 3 || maxFiles <= 0 { // Limit depth to avoid too much recursion
+		return
+	}
+
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		log.Printf("Error reading directory %s: %v", dirPath, err)
+		return
+	}
+
+	fileCount := 0
+	for _, entry := range entries {
+		entryPath := filepath.Join(dirPath, entry.Name())
+		if entry.IsDir() {
+			log.Printf("%s[DIR] %s", strings.Repeat("  ", depth), entryPath)
+			listDirectoryFiles(entryPath, depth+1, maxFiles)
+		} else {
+			log.Printf("%s[FILE] %s", strings.Repeat("  ", depth), entryPath)
+			fileCount++
+			if fileCount >= maxFiles {
+				log.Printf("%s... (more files)", strings.Repeat("  ", depth))
+				break
 			}
-			
-			indexPath := filepath.Join(uiDir, "index.html")
-			if _, err := os.Stat(indexPath); err != nil {
-				fmt.Printf("WARNING: index.html not found at %s: %v\n", indexPath, err)
-				c.String(http.StatusOK, "UI server is running at port 3000, please access it directly")
-				return
-			}
-			
-			c.File(indexPath)
-		})
+		}
 	}
 }
 
-// Run starts the server
-func (s *Server) Run(addr string) error {
-	defer s.Close()
-	return s.router.Run(addr)
-}
-
-// checkLinks godoc
-// @Summary      Check links on a website
-// @Description  Tests all links on a website for broken links
-// @Tags         links
-// @Accept       json
-// @Produce      json
-// @Param        request  body      models.CheckRequest  true  "URL and depth parameters"
-// @Success      200      {array}   models.LinkStatus
-// @Failure      400      {object}  map[string]string
-// @Failure      500      {object}  map[string]string
-// @Router       /check-links [post]
+// @Summary Check for broken links on a website
+// @Description Checks for broken links on a website and returns a result
+// @Accept json
+// @Produce json
+// @Param request body models.CheckRequest true "Check links request"
+// @Success 200 {object} []models.LinkStatus
+// @Router /check-links [post]
 func (s *Server) checkLinks(c *gin.Context) {
 	var req models.CheckRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -158,6 +215,19 @@ func (s *Server) checkLinks(c *gin.Context) {
 		return
 	}
 
+	// For debugging
+	log.Printf("Received request to check links for URL: %s", req.URL)
+
+	// Validate URL
+	if req.URL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "URL is required"})
+		return
+	}
+
 	results := s.crawler.CheckLinks(req.URL, req.Depth)
 	c.JSON(http.StatusOK, results)
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
 } 

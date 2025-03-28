@@ -19,7 +19,8 @@ func main() {
 		port = "8080"
 	}
 
-	if err := server.Run(":" + port); err != nil {
+	// Pass the port without a colon - the server.Run method will add it
+	if err := server.Run(port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 } 
