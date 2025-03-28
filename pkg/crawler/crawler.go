@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -25,29 +26,15 @@ type Crawler struct {
 }
 
 func NewCrawler() (*Crawler, error) {
-	// Try to install Playwright but don't fail if it can't be installed
+	// Install Playwright
 	err := playwright.Install()
 	if err != nil {
-		log.Printf("WARNING: Could not install Playwright driver: %v", err)
-		log.Printf("Will operate in fallback mode without browser automation")
-		
-		// Create a simple HTTP-based crawler
-		return &Crawler{
-			pw:      nil,
-			browser: nil,
-		}, nil
+		return nil, fmt.Errorf("failed to install Playwright driver: %v", err)
 	}
 
 	pw, err := playwright.Run()
 	if err != nil {
-		log.Printf("WARNING: Could not run Playwright: %v", err)
-		log.Printf("Will operate in fallback mode without browser automation")
-		
-		// Create a simple HTTP-based crawler
-		return &Crawler{
-			pw:      nil,
-			browser: nil,
-		}, nil
+		return nil, fmt.Errorf("failed to run Playwright: %v", err)
 	}
 
 	// Try with various browser options
@@ -81,13 +68,7 @@ func NewCrawler() (*Crawler, error) {
 	
 	if launchErr != nil {
 		pw.Stop()
-		log.Printf("WARNING: All browser launch attempts failed. Using fallback HTTP mode.")
-		
-		// Create a simple HTTP-based crawler
-		return &Crawler{
-			pw:      nil,
-			browser: nil,
-		}, nil
+		return nil, fmt.Errorf("all browser launch attempts failed: %v", launchErr)
 	}
 
 	return &Crawler{
@@ -138,18 +119,11 @@ func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int
 
 	start := time.Now()
 	
-	// If browser is not available, use HTTP client instead
-	if c.browser == nil {
-		c.crawlWithHTTP(currentURL, parentURL, currentDepth, maxDepth, start)
-		return
-	}
-	
 	// Create a new context for this page
 	context, err := c.browser.NewContext()
 	if err != nil {
 		log.Printf("Error creating context for %s: %v\n", currentURL, err)
-		// Fallback to HTTP
-		c.crawlWithHTTP(currentURL, parentURL, currentDepth, maxDepth, start)
+		c.recordError(currentURL, parentURL, currentDepth, err, time.Since(start))
 		return
 	}
 	defer context.Close()
@@ -158,8 +132,7 @@ func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int
 	page, err := context.NewPage()
 	if err != nil {
 		log.Printf("Error creating page for %s: %v\n", currentURL, err)
-		// Fallback to HTTP
-		c.crawlWithHTTP(currentURL, parentURL, currentDepth, maxDepth, start)
+		c.recordError(currentURL, parentURL, currentDepth, err, time.Since(start))
 		return
 	}
 
@@ -204,70 +177,6 @@ func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int
 		}
 	}
 
-	c.mu.Lock()
-	c.results = append(c.results, status)
-	c.mu.Unlock()
-}
-
-// Add HTTP fallback method
-func (c *Crawler) crawlWithHTTP(currentURL, parentURL string, currentDepth, maxDepth int, start time.Time) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	
-	// Create request
-	req, err := c.createRequest(currentURL)
-	if err != nil {
-		c.recordError(currentURL, parentURL, currentDepth, err, time.Since(start))
-		return
-	}
-	
-	// Send request
-	resp, err := client.Do(req)
-	if err != nil {
-		c.recordError(currentURL, parentURL, currentDepth, err, time.Since(start))
-		return
-	}
-	defer resp.Body.Close()
-	
-	responseTime := time.Since(start)
-	
-	// Create status
-	status := models.LinkStatus{
-		URL:          currentURL,
-		ParentURL:    parentURL,
-		Depth:        currentDepth + 1,
-		ResponseTime: responseTime.String(),
-		LastChecked:  time.Now(),
-		StatusCode:   resp.StatusCode,
-		IsWorking:    resp.StatusCode >= 200 && resp.StatusCode < 400,
-	}
-	
-	// Extract links if it's HTML
-	var links []string
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "text/html") {
-		// Parse HTML and get links
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Error reading response body: %v", err)
-		} else {
-			links = c.extractLinks(strings.NewReader(string(bodyBytes)), currentURL)
-		}
-	}
-	
-	log.Printf("Found %d links in %s using HTTP client\n", len(links), currentURL)
-	
-	// Only crawl links if we haven't reached max depth
-	if currentDepth < maxDepth-1 {
-		// Launch a new goroutine for each discovered link
-		for _, link := range links {
-			log.Printf("Found link: %s in page %s at depth %d\n", link, currentURL, currentDepth+1)
-			c.wg.Add(1)
-			go c.crawl(link, currentURL, maxDepth, currentDepth+1)
-		}
-	}
-	
 	c.mu.Lock()
 	c.results = append(c.results, status)
 	c.mu.Unlock()
