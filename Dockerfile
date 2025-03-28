@@ -30,8 +30,8 @@ RUN apt-get update && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
-RUN useradd -m -u 1000 appuser
+# Create a non-root user with a different UID
+RUN useradd -m -u 1001 appuser
 
 # Copy the application binary and assets
 WORKDIR /app
