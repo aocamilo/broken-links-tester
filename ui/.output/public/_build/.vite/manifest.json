@@ -1,0 +1,46 @@
+{
+  "__vite-browser-external": {
+    "file": "assets/__vite-browser-external-BIHI7g3E.js",
+    "name": "__vite-browser-external",
+    "src": "__vite-browser-external",
+    "isDynamicEntry": true
+  },
+  "_client-C7JLtMvq.js": {
+    "file": "assets/client-C7JLtMvq.js",
+    "name": "client",
+    "dynamicImports": [
+      "app/routes/index.tsx?tsr-split=component"
+    ],
+    "css": [
+      "assets/client-CTcqDH8i.css"
+    ]
+  },
+  "_client-CTcqDH8i.css": {
+    "file": "assets/client-CTcqDH8i.css",
+    "src": "_client-CTcqDH8i.css"
+  },
+  "app/routes/index.tsx?tsr-split=component": {
+    "file": "assets/index-uP7l1PHj.js",
+    "name": "index",
+    "src": "app/routes/index.tsx?tsr-split=component",
+    "isDynamicEntry": true,
+    "imports": [
+      "_client-C7JLtMvq.js"
+    ],
+    "dynamicImports": [
+      "__vite-browser-external",
+      "__vite-browser-external",
+      "__vite-browser-external",
+      "__vite-browser-external"
+    ]
+  },
+  "virtual:$vinxi/handler/client": {
+    "file": "assets/client-Dc6jMhd6.js",
+    "name": "client",
+    "src": "virtual:$vinxi/handler/client",
+    "isEntry": true,
+    "imports": [
+      "_client-C7JLtMvq.js"
+    ]
+  }
+}

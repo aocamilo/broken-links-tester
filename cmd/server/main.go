@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/aocamilo/broken-links-tester/pkg/api"
 )
@@ -12,7 +13,13 @@ func main() {
 		log.Fatalf("Failed to create server: %v", err)
 	}
 
-	if err := server.Run(":8080"); err != nil {
+	// Use PORT environment variable if available (for Railway)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	if err := server.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 } 

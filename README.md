@@ -45,7 +45,7 @@ A web application for recursively checking broken links on web pages. It combine
 ### Check Links Endpoint
 
 ```
-POST /check-links
+POST /api/check-links
 ```
 
 Request body:
@@ -82,7 +82,7 @@ Response:
 
 ### Backend
 
-1. Make sure you have Go 1.16 or later installed
+1. Make sure you have Go 1.24.1 or later installed
 2. Clone the repository
 3. Install dependencies:
    ```bash
@@ -113,11 +113,67 @@ The service will start on port 8080 by default.
 
 The UI will be available at http://localhost:3000 (or another port if 3000 is in use).
 
+## Deployment
+
+### Railway
+
+The application is configured to be easily deployed on [Railway](https://railway.app):
+
+1. Connect your repository to Railway
+2. Create a new project from the repository
+3. Railway will automatically detect the configuration and build the application
+
+The application uses the following configuration:
+
+- The UI is built and served by the Go backend
+- API routes are prefixed with `/api`
+- Static UI assets are served from the `/ui/dist` directory
+- A health check endpoint is available at `/api/health`
+
+### Docker
+
+You can also build and run the application using Docker:
+
+1. Build the Docker image:
+   ```bash
+   docker build -t broken-links-tester .
+   ```
+2. Run the container:
+
+   ```bash
+   docker run -p 8080:8080 -p 3000:3000 broken-links-tester
+   ```
+
+   If the default ports are already in use, you can map to different ports:
+
+   ```bash
+   docker run -p 8090:8080 -p 3001:3000 broken-links-tester
+   ```
+
+The container runs two services:
+
+- The Go backend API server on port 8080
+- The TanStack Start frontend server on port 3000
+
+You can access the application at http://localhost:3000 (or http://localhost:3001 if you used alternative ports), which will communicate with the API at http://localhost:8080 (or http://localhost:8090).
+
+#### Container Architecture
+
+The Docker container uses a multi-service approach:
+
+- **supervisord** manages both the Go and Node.js processes
+- The Go backend serves the API endpoints with the `/api` prefix
+- The TanStack Start server handles server-side rendering for the React UI
+- Communication between the frontend and backend happens within the container
+
+This architecture allows for a complete full-stack application to be packaged in a single container, simplifying deployment while maintaining the benefits of both the Go backend (efficient link crawling) and the React frontend (rich user interface).
+
 ## Configuration
 
 - The service timeout is set to 10 seconds per request
 - Maximum depth is limited to 4 levels
-- The service runs on port 8080 by default
+- The Go API server runs on the port specified by the PORT environment variable (defaults to 8080)
+- The TanStack Start server runs on the port specified by the UI_PORT environment variable (defaults to 3000)
 
 ## Error Handling
 

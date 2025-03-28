@@ -1,0 +1,9 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "cd ui && npm install && npm run build && cd .. && go mod download"
+
+[deploy]
+# Use supervisord to manage both the Go API and TanStack Start servers
+startCommand = "apk add --no-cache supervisor && /usr/bin/supervisord -c supervisord.conf"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300 

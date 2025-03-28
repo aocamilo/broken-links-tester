@@ -1,0 +1,17 @@
+{
+  "app/routes/index.tsx?tsr-split=component&tsr-directive-use-server=": {
+    "file": "assets/index-BkjnP6dm.js",
+    "name": "index",
+    "src": "app/routes/index.tsx?tsr-split=component&tsr-directive-use-server=",
+    "isDynamicEntry": true
+  },
+  "virtual:$vinxi/handler/server": {
+    "file": "server.js",
+    "name": "server",
+    "src": "virtual:$vinxi/handler/server",
+    "isEntry": true,
+    "dynamicImports": [
+      "app/routes/index.tsx?tsr-split=component&tsr-directive-use-server="
+    ]
+  }
+}

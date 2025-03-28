@@ -1,0 +1,9 @@
+[phases.setup]
+nixPkgs = ["go_1_24", "nodejs_18", "supervisord", "chromium", "libc6-compat", "nss"]
+
+[variables]
+NIXPACKS_GO_VERSION = "1.24"
+NIXPACKS_NODE_VERSION = "18"
+
+[start]
+cmd = "supervisord -c supervisord.conf" 
