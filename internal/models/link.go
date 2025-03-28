@@ -7,11 +7,11 @@ type LinkStatus struct {
 	URL           string        `json:"url"`
 	StatusCode    int           `json:"status_code"`
 	Error         string        `json:"error,omitempty"`
-	ResponseTime  time.Duration `json:"response_time"`
-	Depth         int          `json:"depth"`
-	ParentURL     string       `json:"parent_url,omitempty"`
-	IsWorking     bool         `json:"is_working"`
-	LastChecked   time.Time    `json:"last_checked"`
+	ResponseTime  string        `json:"response_time"`
+	Depth         int           `json:"depth"`
+	ParentURL     string        `json:"parent_url,omitempty"`
+	IsWorking     bool          `json:"is_working"`
+	LastChecked   time.Time     `json:"last_checked"`
 }
 
 // CheckRequest represents the incoming request to check links

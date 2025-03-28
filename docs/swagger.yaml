@@ -1,0 +1,76 @@
+basePath: /
+definitions:
+  models.CheckRequest:
+    properties:
+      depth:
+        maximum: 4
+        minimum: 0
+        type: integer
+      url:
+        type: string
+    required:
+    - url
+    type: object
+  models.LinkStatus:
+    properties:
+      depth:
+        type: integer
+      error:
+        type: string
+      is_working:
+        type: boolean
+      last_checked:
+        type: string
+      parent_url:
+        type: string
+      response_time:
+        type: string
+      status_code:
+        type: integer
+      url:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API for testing broken links on websites
+  title: Broken Links Tester API
+  version: "1.0"
+paths:
+  /check-links:
+    post:
+      consumes:
+      - application/json
+      description: Tests all links on a website for broken links
+      parameters:
+      - description: URL and depth parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LinkStatus'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Check links on a website
+      tags:
+      - links
+swagger: "2.0"
