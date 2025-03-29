@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/aocamilo/broken-links-tester/internal/models"
 	"github.com/aocamilo/broken-links-tester/pkg/crawler"
@@ -52,9 +54,23 @@ func (s *Server) Close() error {
 
 // Start starts the server
 func (s *Server) Run(port string) error {
-	defer s.Close()
-	s.setupRoutes()
-	return s.router.Run(":" + port)
+	// Create a channel to listen for signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start the server in a goroutine
+	go func() {
+		if err := s.router.Run(":" + port); err != nil {
+			log.Printf("Server error: %v", err)
+		}
+	}()
+
+	// Wait for a signal
+	<-sigChan
+
+	// Graceful shutdown
+	log.Println("Shutting down server...")
+	return nil
 }
 
 func (s *Server) setupRoutes() {
