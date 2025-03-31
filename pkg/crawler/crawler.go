@@ -25,6 +25,24 @@ type Crawler struct {
 	wg      sync.WaitGroup
 }
 
+// BrowserOptions contains options for browser launch
+type BrowserOptions struct {
+	Timeout     time.Duration
+	MaxRetries  int
+	RetryDelay  time.Duration
+	MaxConcurrent int
+}
+
+// DefaultBrowserOptions returns default browser options
+func DefaultBrowserOptions() BrowserOptions {
+	return BrowserOptions{
+		Timeout:     60 * time.Second,  // 60 seconds timeout
+		MaxRetries:  3,                 // 3 retries
+		RetryDelay:  2 * time.Second,   // 2 seconds between retries
+		MaxConcurrent: 5,               // Max 5 concurrent requests
+	}
+}
+
 func NewCrawler() (*Crawler, error) {
 	// Install Playwright
 	err := playwright.Install()
@@ -90,19 +108,23 @@ func (c *Crawler) Close() error {
 }
 
 func (c *Crawler) CheckLinks(baseURL string, maxDepth int) []models.LinkStatus {
+	opts := DefaultBrowserOptions()
 	c.visited = sync.Map{}
 	c.results = []models.LinkStatus{}
 	
+	// Create a semaphore to limit concurrent requests
+	sem := make(chan struct{}, opts.MaxConcurrent)
+	
 	// Start with the base URL at depth -1
 	c.wg.Add(1)
-	go c.crawl(baseURL, "", maxDepth, -1)
+	go c.crawl(baseURL, "", maxDepth, -1, opts, sem)
 	
 	// Wait for all crawling goroutines to finish
 	c.wg.Wait()
 	return c.results
 }
 
-func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int) {
+func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int, opts BrowserOptions, sem chan struct{}) {
 	defer c.wg.Done()
 
 	// Check depth before doing anything else
@@ -119,6 +141,10 @@ func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int
 
 	start := time.Now()
 	
+	// Acquire semaphore
+	sem <- struct{}{}
+	defer func() { <-sem }() // Release semaphore when done
+
 	// Create a new context for this page
 	context, err := c.browser.NewContext()
 	if err != nil {
@@ -136,14 +162,26 @@ func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int
 		return
 	}
 
-	// Navigate to the page and wait for network idle
-	resp, err := page.Goto(currentURL, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateNetworkidle,
-		Timeout:   playwright.Float(30000), // 30 seconds timeout
-	})
-	if err != nil {
-		log.Printf("Error navigating to %s: %v\n", currentURL, err)
-		c.recordError(currentURL, parentURL, currentDepth, err, time.Since(start))
+	// Try to navigate with retries
+	var resp playwright.Response
+	var navErr error
+	for i := 0; i < opts.MaxRetries; i++ {
+		resp, navErr = page.Goto(currentURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateNetworkidle,
+			Timeout:   playwright.Float(float64(opts.Timeout.Milliseconds())),
+		})
+		if navErr == nil {
+			break
+		}
+		log.Printf("Attempt %d failed for %s: %v\n", i+1, currentURL, navErr)
+		if i < opts.MaxRetries-1 {
+			time.Sleep(opts.RetryDelay)
+		}
+	}
+
+	if navErr != nil {
+		log.Printf("All attempts failed for %s: %v\n", currentURL, navErr)
+		c.recordError(currentURL, parentURL, currentDepth, navErr, time.Since(start))
 		return
 	}
 
@@ -173,7 +211,7 @@ func (c *Crawler) crawl(currentURL, parentURL string, maxDepth, currentDepth int
 		for _, link := range links {
 			log.Printf("Found link: %s in page %s at depth %d\n", link, currentURL, currentDepth+1)
 			c.wg.Add(1)
-			go c.crawl(link, currentURL, maxDepth, currentDepth+1)
+			go c.crawl(link, currentURL, maxDepth, currentDepth+1, opts, sem)
 		}
 	}
 
