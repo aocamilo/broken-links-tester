@@ -63,8 +63,8 @@ func (s *Server) Run(port string) error {
 
 	// Start the server in a goroutine
 	go func() {
-		log.Printf("Starting server on port %s", port)
-		if err := s.router.Run(":" + port); err != nil {
+		log.Printf("Starting server on 0.0.0.0:%s", port)
+		if err := s.router.Run("0.0.0.0:" + port); err != nil {
 			log.Printf("Server error: %v", err)
 		}
 	}()
