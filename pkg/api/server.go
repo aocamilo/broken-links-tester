@@ -54,12 +54,16 @@ func (s *Server) Close() error {
 
 // Start starts the server
 func (s *Server) Run(port string) error {
+	// Setup routes first
+	s.setupRoutes()
+
 	// Create a channel to listen for signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start the server in a goroutine
 	go func() {
+		log.Printf("Starting server on port %s", port)
 		if err := s.router.Run(":" + port); err != nil {
 			log.Printf("Server error: %v", err)
 		}
